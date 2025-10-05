@@ -1,5 +1,91 @@
 // =========================================================
+// 0. FUNÇÕES DE AUTENTICAÇÃO FIREBASE (NOVAS)
+// =========================================================
+
+// Elementos de Seção (CRÍTICO: ID's do HTML)
+const loginSection = document.getElementById('login-section');
+const appContainer = document.getElementById('app-container');
+const loginErrorMessage = document.getElementById('login-error-message');
+
+/**
+ * Tenta fazer o login no Firebase com e-mail e senha.
+ */
+function fazerLogin() {
+    loginErrorMessage.textContent = '';
+    const email = document.getElementById('login-email').value;
+    const senha = document.getElementById('login-senha').value;
+
+    if (!email || !senha) {
+        loginErrorMessage.textContent = "Preencha e-mail e senha.";
+        return;
+    }
+
+    firebase.auth().signInWithEmailAndPassword(email, senha)
+        .then(() => {
+            // O onAuthStateChanged cuidará da navegação
+        })
+        .catch((error) => {
+            let message = "Erro de Login. E-mail ou senha incorretos.";
+            if (error.code === 'auth/user-not-found') {
+                message = "Usuário não encontrado.";
+            } else if (error.code === 'auth/wrong-password') {
+                message = "Senha incorreta.";
+            }
+            loginErrorMessage.textContent = message;
+            console.error(error);
+        });
+}
+
+/**
+ * Desloga o usuário do Firebase.
+ */
+function fazerLogout() {
+    firebase.auth().signOut().then(() => {
+        // O onAuthStateChanged cuidará da navegação
+    }).catch((error) => {
+        alert("Erro ao fazer logout: " + error.message);
+    });
+}
+
+
+/**
+ * Gerencia o estado de autenticação (logado ou deslogado).
+ */
+firebase.auth().onAuthStateChanged((user) => {
+    if (user) {
+        // USUÁRIO LOGADO: Mostra o CRM
+        console.log("Usuário logado:", user.uid);
+        if (loginSection) loginSection.style.display = 'none';
+        if (appContainer) {
+            appContainer.style.display = 'grid'; // Assumindo que seu .app-container usa grid/flex
+            carregarDadosIniciais(); // Chama a função para carregar todos os dados
+        }
+
+    } else {
+        // USUÁRIO DESLOGADO: Mostra a tela de login
+        console.log("Nenhum usuário logado.");
+        if (loginSection) {
+            loginSection.style.display = 'flex';
+            document.getElementById('login-senha').value = ''; // Limpa a senha
+        }
+        if (appContainer) appContainer.style.display = 'none';
+    }
+});
+
+/**
+ * Função principal para carregar os dados somente após o login.
+ */
+function carregarDadosIniciais() {
+    // 1. Inicia os listeners de dados para atualizar as tabelas em tempo real
+    iniciarListenersFirestore();
+
+    // 2. Garante que a primeira seção é exibida (Clientes)
+    mostrarSecao('clientes-section');
+}
+
+// =========================================================
 // 1. Variáveis Globais e Inicialização
+// (Removidas as variáveis de seção 'loginSection' e 'appSection' pois já estão no bloco 0)
 // =========================================================
 
 // Elementos da Navegação (Sidebar)
@@ -35,6 +121,67 @@ const modalCadastroBody = document.getElementById('modal-cadastro-body');
 const modalCadastroSalvarBtn = document.getElementById('modal-cadastro-salvar');
 
 let tipoCadastroAtual = '';
+
+// =========================================================
+// 1.1. GERENCIAMENTO DE NAVEGAÇÃO
+// =========================================================
+
+function mostrarSecao(targetId) {
+    document.querySelectorAll('.page-section').forEach(section => {
+        section.classList.remove('active-section');
+    });
+    document.getElementById(targetId).classList.add('active-section');
+    
+    // Atualiza o título do header
+    topHeader.querySelector('h2').textContent = document.querySelector(`[data-target="${targetId}"]`).textContent.replace(' ','').slice(1);
+    
+    // Atualiza o item de navegação ativo
+    navItems.forEach(item => item.classList.remove('active'));
+    document.querySelector(`[data-target="${targetId}"]`).classList.add('active');
+}
+
+navItems.forEach(item => {
+    item.addEventListener('click', () => {
+        const target = item.getAttribute('data-target');
+        mostrarSecao(target);
+    });
+});
+
+// =========================================================
+// 1.2. LISTENERS FIREBASE (Carrega e mantém os dados atualizados)
+// =========================================================
+
+function iniciarListenersFirestore() {
+    // Clientes
+    db.collection('clientes').orderBy('nome').onSnapshot(snapshot => {
+        const clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderizarClientes(clientes);
+    });
+
+    // Produtos
+    db.collection('produtos').orderBy('nome').onSnapshot(snapshot => {
+        const produtos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderizarProdutos(produtos);
+    });
+    
+    // Vendas
+    db.collection('vendas').orderBy('criadoEm', 'desc').onSnapshot(snapshot => {
+        const vendas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderizarVendas(vendas);
+    });
+
+    // Fluxo de Caixa
+    db.collection('fluxo').orderBy('criadoEm', 'desc').onSnapshot(snapshot => {
+        const fluxo = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderizarFluxo(fluxo);
+    });
+
+    // Insumos
+    db.collection('insumos').orderBy('nome').onSnapshot(snapshot => {
+        const insumos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderizarInsumos(insumos);
+    });
+}
 
 
 // =========================================================
@@ -161,7 +308,7 @@ function abrirModalCadastro(tipo) {
                 if (modalClienteVenda && selectClienteVenda) {
                     modalClienteVenda.innerHTML = selectClienteVenda.innerHTML;
                 }
-                   if (modalProdutoVenda && selectProdutoVenda) {
+                    if (modalProdutoVenda && selectProdutoVenda) {
                     modalProdutoVenda.innerHTML = selectProdutoVenda.innerHTML;
                 }
             }, 100); 
@@ -171,7 +318,7 @@ function abrirModalCadastro(tipo) {
         case 'recebimento':
             titulo = 'Nova Entrada (Recebimento)';
             formHTML = `
-                   <form id="novo-recebimento-form">
+                    <form id="novo-recebimento-form">
                     <div><label for="valor-recebido">Valor Recebido:</label><input type="number" id="valor-recebido" step="0.01" required></div>
                     <div><label for="origem">Origem (Ex: Venda, Cliente, Outros):</label><input type="text" id="origem" required></div>
                     <div><label for="data-recebimento">Data:</label><input type="date" id="data-recebimento" required></div>
@@ -183,7 +330,7 @@ function abrirModalCadastro(tipo) {
         case 'despesa':
             titulo = 'Nova Saída (Despesa)';
             formHTML = `
-                   <form id="nova-despesa-form">
+                    <form id="nova-despesa-form">
                     <div><label for="valor-despesa">Valor da Despesa:</label><input type="number" id="valor-despesa" step="0.01" required></div>
                     <div><label for="destino">Destino (Ex: Fornecedor, Aluguel, Salário):</label><input type="text" id="destino" required></div>
                     <div><label for="data-despesa">Data:</label><input type="date" id="data-despesa" required></div>
@@ -469,7 +616,7 @@ function renderizarProdutos(produtos) {
         tr.innerHTML = `
             <td>${produto.nome}</td>
             <td>${produto.codigo || 'N/A'}</td> 
-            <td><td>${produto.unidade || 'N/A'}</td></td>
+            <td>${produto.unidade || 'N/A'}</td>
             <td>${produto.vencimento || 'N/A'}</td>
             <td>R$ ${produto.valorPago ? produto.valorPago.toFixed(2) : '0.00'}</td>
             <td>${produto.fornecedor || 'N/A'}</td>
@@ -673,15 +820,15 @@ function renderizarFluxo(itens) {
 }
 
 async function deletarFluxoItem(id) {
-       if (confirm('Tem certeza que deseja excluir esta movimentação?')) {
-         try {
-             await db.collection('fluxo').doc(id).delete();
-             alert('Item de fluxo excluído com sucesso!');
-         } catch (error) {
-             console.error("Erro ao excluir item de fluxo: ", error);
-             alert("Erro ao excluir. Verifique o console.");
-         }
-     }
+        if (confirm('Tem certeza que deseja excluir esta movimentação?')) {
+          try {
+                await db.collection('fluxo').doc(id).delete();
+                alert('Item de fluxo excluído com sucesso!');
+          } catch (error) {
+                console.error("Erro ao excluir item de fluxo: ", error);
+                alert("Erro ao excluir. Verifique o console.");
+          }
+       }
 }
 
 
@@ -762,92 +909,7 @@ async function deletarInsumo(id) {
             alert('Insumo excluído com sucesso!');
         } catch (error) {
             console.error("Erro ao excluir insumo: ", error);
-            alert("Erro ao excluir. Verifique o console.");
+            alert("Erro ao excluir insumo. Verifique o console.");
         }
     }
 }
-
-
-// =========================================================
-// 7. LÓGICA DE NAVEGAÇÃO E INICIALIZAÇÃO DE DADOS (CRÍTICO)
-// =========================================================
-
-navItems.forEach(item => {
-    item.addEventListener('click', (e) => {
-        e.preventDefault();
-        
-        const targetId = item.getAttribute('data-target');
-        const targetSection = document.getElementById(targetId);
-
-        document.querySelectorAll('.page-section').forEach(section => {
-            section.classList.remove('active-section');
-        });
-        document.querySelectorAll('.nav-item').forEach(nav => {
-            nav.classList.remove('active');
-        });
-
-        if (targetSection) {
-            targetSection.classList.add('active-section');
-            item.classList.add('active');
-            
-            topHeader.querySelector('h2').textContent = item.textContent;
-        }
-    });
-});
-
-
-// FUNÇÃO DE INICIALIZAÇÃO (Resolve o TypeError)
-document.addEventListener('DOMContentLoaded', () => {
-    // Simula o clique inicial no primeiro item para carregar a seção
-    const initialItem = document.querySelector('.nav-item.active');
-    if (initialItem) {
-        initialItem.click(); 
-    }
-    
-    // GARANTIA: Iniciar listeners do Firebase apenas após o DOM estar pronto
-    if (typeof db !== 'undefined' && db.collection) {
-
-        // CLIENTES: (ATUALIZADO)
-        db.collection('clientes').orderBy('criadoEm', 'desc')
-            .onSnapshot(snapshot => {
-                renderizarClientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }, error => {
-                console.error("Erro ao carregar clientes: ", error);
-            });
-            
-        // PRODUTOS: (ATUALIZADO)
-        db.collection('produtos').orderBy('criadoEm', 'desc')
-            .onSnapshot(snapshot => {
-                renderizarProdutos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }, error => {
-                console.error("Erro ao carregar produtos: ", error);
-            });
-
-        // VENDAS
-        db.collection('vendas').orderBy('criadoEm', 'desc')
-            .onSnapshot(snapshot => {
-                renderizarVendas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }, error => {
-                console.error("Erro ao carregar vendas: ", error);
-            });
-
-        // FLUXO DE CAIXA
-        db.collection('fluxo').orderBy('criadoEm', 'desc')
-            .onSnapshot(snapshot => {
-                renderizarFluxo(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }, error => {
-                console.error("Erro ao carregar fluxo de caixa: ", error);
-            });
-            
-        // INSUMOS
-        db.collection('insumos').orderBy('criadoEm', 'desc')
-            .onSnapshot(snapshot => {
-                renderizarInsumos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }, error => {
-                console.error("Erro ao carregar insumos: ", error);
-            });
-            
-    } else {
-        console.error("Firebase Firestore (db) não foi inicializado corretamente.");
-    }
-});
