@@ -267,6 +267,7 @@ function abrirModalCadastro(tipo) {
                 <form id="novo-produto-form">
                     <div><label for="nome-produto">Nome:</label><input type="text" id="nome-produto" required></div>
                     <div><label for="codigo">Código:</label><input type="text" id="codigo" placeholder="Ex: GTIN, SKU, Código interno"></div>
+                    <div><label for="estoque">Estoque Inicial:</label><input type="number" id="estoque" step="1" value="0" required></div>
                     <div><label for="unidade">Unidade:</label><input type="text" id="unidade" placeholder="Ex: KG, Unidade, Litro"></div>
                     <div><label for="vencimento">Vencimento:</label><input type="date" id="vencimento"></div>
                     <div><label for="valor-pago">Valor Pago (Custo):</label><input type="number" id="valor-pago" step="0.01" required></div>
@@ -416,6 +417,7 @@ modalCadastroSalvarBtn.addEventListener('click', async () => {
         novoItem = {
             nome: formElement.querySelector('#nome-produto').value,
             codigo: formElement.querySelector('#codigo').value,
+            estoque: parseInt(formElement.querySelector('#estoque').value, 10),
             unidade: formElement.querySelector('#unidade').value,
             vencimento: formElement.querySelector('#vencimento').value,
             valorPago: parseFloat(formElement.querySelector('#valor-pago').value),
@@ -618,7 +620,7 @@ function renderizarProdutos(produtos) {
     produtosCache = {};
 
     if (produtos.length === 0) {
-        listaProdutosBody.innerHTML = `<tr><td colspan="9">Nenhum produto cadastrado.</td></tr>`;
+        listaProdutosBody.innerHTML = `<tr><td colspan="10">Nenhum produto cadastrado.</td></tr>`;
     }
 
     produtos.forEach(produto => {
@@ -631,6 +633,7 @@ function renderizarProdutos(produtos) {
             id: produto.id,
             nome: produto.nome,
             codigo: produto.codigo || '',
+            estoque: produto.estoque || 0,
             unidade: produto.unidade || '',
             vencimento: produto.vencimento || '',
             valorPago: produto.valorPago || 0,
@@ -643,6 +646,7 @@ function renderizarProdutos(produtos) {
         tr.innerHTML = `
             <td>${produto.nome}</td>
             <td>${produto.codigo || 'N/A'}</td> 
+            <td>${produto.estoque !== undefined ? produto.estoque : 'N/A'}</td>
             <td>${produto.unidade || 'N/A'}</td>
             <td>${produto.vencimento || 'N/A'}</td>
             <td>R$ ${produto.valorPago ? produto.valorPago.toFixed(2) : '0.00'}</td>
@@ -702,6 +706,10 @@ function abrirModalEdicaoProduto(produtoData) {
         <div>
             <label for="edicao-codigo">Código:</label>
             <input type="text" id="edicao-codigo" value="${produtoData.codigo || ''}">
+        </div>
+        <div>
+            <label for="edicao-estoque">Estoque:</label>
+            <input type="number" id="edicao-estoque" step="1" value="${produtoData.estoque}" required>
         </div>
         <div>
             <label for="edicao-unidade">Unidade:</label>
@@ -839,6 +847,7 @@ function adicionarLinhaProdutoVenda() {
     }
 
     linhaDiv.innerHTML = `
+        <select class="produto-select produto-item-input" style="flex: 3;" required>${selectProdutoVenda.innerHTML}</select>
         <select class="produto-select produto-item-input" style="flex: 3;" required>${opcoesProdutoHTML}</select>
         <input type="number" class="quantidade-input produto-item-input" placeholder="Qtd" value="1" step="1" style="flex: 1;" required>
         <input type="number" class="preco-input produto-item-input" placeholder="Preço Unit." step="0.01" style="flex: 1;" required>
