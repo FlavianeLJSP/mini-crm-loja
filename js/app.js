@@ -828,8 +828,18 @@ function adicionarLinhaProdutoVenda() {
     linhaDiv.style.gap = '10px';
     linhaDiv.style.marginBottom = '10px';
 
+    // CRÍTICO: Recria as opções de produtos a partir do cache mais recente.
+    // Isso garante que a lista de produtos esteja sempre atualizada no modal.
+    let opcoesProdutoHTML = '<option value="">Selecione um Produto</option>';
+    for (const id in produtosCache) {
+        // Encontra o objeto produto completo para pegar o valorPago
+        const produtoOriginal = Object.values(produtosCache).find(p => p.id === id);
+        const custo = produtoOriginal && produtoOriginal.valorPago ? produtoOriginal.valorPago.toFixed(2) : '0.00';
+        opcoesProdutoHTML += `<option value="${id}">${produtosCache[id].nome} (Custo: R$ ${custo})</option>`;
+    }
+
     linhaDiv.innerHTML = `
-        <select class="produto-select produto-item-input" style="flex: 3;" required>${selectProdutoVenda.innerHTML}</select>
+        <select class="produto-select produto-item-input" style="flex: 3;" required>${opcoesProdutoHTML}</select>
         <input type="number" class="quantidade-input produto-item-input" placeholder="Qtd" value="1" step="1" style="flex: 1;" required>
         <input type="number" class="preco-input produto-item-input" placeholder="Preço Unit." step="0.01" style="flex: 1;" required>
         <button type="button" onclick="this.parentElement.remove(); calcularTotalVenda();" class="delete-btn" style="padding: 5px 10px;">X</button>
