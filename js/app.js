@@ -279,37 +279,58 @@ function abrirModalCadastro(tipo) {
 
         case 'venda':
             titulo = 'Registrar Nova Venda';
+            // Estrutura do formulário de venda com suporte a múltiplos produtos
             formHTML = `
                 <form id="nova-venda-form">
+                    <!-- Campos gerais da venda -->
                     <div>
                         <label for="cliente-venda-modal">Cliente:</label>
-                        <select id="cliente-venda-modal" required>
-                            <option value="">Carregando clientes...</option>
-                        </select>
+                        <select id="cliente-venda-modal" required></select>
                     </div>
-                    <div>
-                        <label for="produto-venda-modal">Produto Vendido:</label>
-                        <select id="produto-venda-modal" required>
-                            <option value="">Carregando produtos...</option>
-                        </select>
-                    </div>
-                    <div><label for="quantidade-venda">Quantidade:</label><input type="number" id="quantidade-venda" step="1" value="1" required></div>
-                    <div><label for="preco-unitario">Preço Unitário (Venda):</label><input type="number" id="preco-unitario" step="0.01" required></div>
-                    <div><label for="valor-total">Valor Total (Venda):</label><input type="number" id="valor-total" step="0.01" required></div>
                     <div><label for="data-venda">Data da Venda:</label><input type="date" id="data-venda" required></div>
                     <div><label for="forma-pagamento-venda">Forma de Pagamento:</label><input type="text" id="forma-pagamento-venda" required></div>
+                    
+                    <!-- Seção de Produtos -->
+                    <hr style="margin: 20px 0;">
+                    <h4>Produtos da Venda</h4>
+                    <div id="produtos-venda-container">
+                        <!-- Linhas de produto serão adicionadas aqui dinamicamente -->
+                    </div>
+                    <button type="button" class="add-btn" onclick="adicionarLinhaProdutoVenda()" style="margin-top: 10px; width: auto; padding: 8px 12px;">+ Adicionar Produto</button>
+                    
+                    <!-- Total da Venda -->
+                    <hr style="margin: 20px 0;">
+                    <div style="text-align: right; font-size: 1.2em; font-weight: bold;">
+                        <label>Valor Total da Venda: R$ </label>
+                        <span id="valor-total-venda-display">0.00</span>
+                    </div>
                 </form>
             `;
-            // Carrega os selects de Clientes e Produtos (opções que foram renderizadas anteriormente)
+
+            // Atraso para garantir que o HTML foi inserido no DOM
             setTimeout(() => {
                 const modalClienteVenda = document.getElementById('cliente-venda-modal');
-                const modalProdutoVenda = document.getElementById('produto-venda-modal');
-
-                if (modalClienteVenda && selectClienteVenda) {
+                if (modalClienteVenda) {
                     modalClienteVenda.innerHTML = selectClienteVenda.innerHTML;
                 }
-                    if (modalProdutoVenda && selectProdutoVenda) {
-                    modalProdutoVenda.innerHTML = selectProdutoVenda.innerHTML;
+
+                // Adiciona a primeira linha de produto automaticamente
+                adicionarLinhaProdutoVenda();
+
+                // Define a data de hoje como padrão
+                const dataInput = document.getElementById('data-venda');
+                if (dataInput) {
+                    dataInput.value = new Date().toISOString().split('T')[0];
+                }
+
+                // Adiciona o listener para recalcular o total
+                const form = document.getElementById('nova-venda-form');
+                if(form) {
+                    form.addEventListener('change', (event) => {
+                        if (event.target.classList.contains('produto-item-input')) {
+                            calcularTotalVenda();
+                        }
+                    });
                 }
             }, 100); 
 
@@ -408,18 +429,24 @@ modalCadastroSalvarBtn.addEventListener('click', async () => {
     
     } else if (tipoCadastroAtual === 'venda') {
         isVenda = true; 
+        const produtosVendidos = [];
+        const produtoRows = formElement.querySelectorAll('.produto-venda-linha');
+        
+        produtoRows.forEach(row => {
+            const produtoId = row.querySelector('.produto-select').value;
+            const quantidade = parseFloat(row.querySelector('.quantidade-input').value);
+            const precoUnitario = parseFloat(row.querySelector('.preco-input').value);
+            if (produtoId && !isNaN(quantidade) && !isNaN(precoUnitario)) {
+                produtosVendidos.push({ produtoId, quantidade, precoUnitario });
+            }
+        });
+
         novoItem = {
             clienteId: formElement.querySelector('#cliente-venda-modal').value,
-            produtoId: formElement.querySelector('#produto-venda-modal').value,
-            quantidade: parseFloat(formElement.querySelector('#quantidade-venda').value),
-            precoUnitario: parseFloat(formElement.querySelector('#preco-unitario').value),
-            valorTotal: parseFloat(formElement.querySelector('#valor-total').value),
+            produtos: produtosVendidos, // Array de produtos
             dataVenda: formElement.querySelector('#data-venda').value,
             formaPagamento: formElement.querySelector('#forma-pagamento-venda').value, 
         };
-        if (!novoItem.clienteId || !novoItem.produtoId || isNaN(novoItem.valorTotal)) {
-             alert("Todos os campos de Venda são obrigatórios."); return;
-        }
     
     } else if (tipoCadastroAtual === 'recebimento' || tipoCadastroAtual === 'despesa') {
         isFluxo = true;
@@ -713,16 +740,15 @@ function abrirModalEdicaoProduto(produtoData) {
 async function salvarVenda(vendaData) {
     try {
         const novaVenda = {
-            clienteId: vendaData.clienteId,
-            produtoId: vendaData.produtoId,
-            quantidade: vendaData.quantidade,
-            precoUnitario: vendaData.precoUnitario,
-            valorTotal: vendaData.valorTotal,
-            dataVenda: vendaData.dataVenda,
-            formaPagamento: vendaData.formaPagamento,
+            ...vendaData,
+            // Calcula o valor total somando o (preço * quantidade) de cada produto
+            valorTotal: vendaData.produtos.reduce((total, produto) => {
+                return total + (produto.quantidade * produto.precoUnitario);
+            }, 0),
             criadoEm: firebase.firestore.FieldValue.serverTimestamp()
         };
 
+        // Validação final
         await db.collection('vendas').add(novaVenda);
         alert('Venda registrada com sucesso!');
 
@@ -746,15 +772,22 @@ function renderizarVendas(vendas) {
     
     vendas.forEach(venda => {
         // BUSCA OS NOMES NO CACHE
-        const nomeCliente = clientesCache[venda.clienteId] || `ID Cliente: ${venda.clienteId.substring(0, 5)}...`;
-        const nomeProduto = produtosCache[venda.produtoId] || `ID Produto: ${venda.produtoId.substring(0, 5)}...`;
+        const nomeCliente = clientesCache[venda.clienteId] || `ID: ${venda.clienteId.substring(0, 5)}...`;
+        
+        // Mapeia os produtos da venda para exibir seus nomes
+        const produtosHtml = venda.produtos && venda.produtos.length > 0
+            ? venda.produtos.map(p => {
+                const nomeProduto = produtosCache[p.produtoId] || `ID: ${p.produtoId.substring(0, 5)}...`;
+                return `<li>${p.quantidade}x ${nomeProduto} (R$ ${p.precoUnitario.toFixed(2)})</li>`;
+              }).join('')
+            : '<li>Nenhum produto informado</li>';
 
+        // Na tabela, a coluna de preço unitário foi removida para dar espaço à lista de produtos
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${nomeCliente}</td>
-            <td>${nomeProduto}</td>
-            <td>${venda.quantidade}</td>
-            <td>R$ ${venda.precoUnitario ? venda.precoUnitario.toFixed(2) : '0.00'}</td> 
+            <td><ul style="padding-left: 15px; margin: 0;">${produtosHtml}</ul></td>
+            <td>${venda.produtos ? venda.produtos.reduce((acc, p) => acc + p.quantidade, 0) : 0}</td>
             <td>R$ ${venda.valorTotal ? venda.valorTotal.toFixed(2) : '0.00'}</td>
             <td>${venda.dataVenda || 'N/A'}</td>
             <td>${venda.formaPagamento || 'N/A'}</td> 
@@ -777,6 +810,51 @@ async function deletarVenda(id) {
         }
     }
 }
+
+// =========================================================
+// 4.1 FUNÇÕES AUXILIARES PARA O MODAL DE VENDAS
+// =========================================================
+
+/**
+ * Adiciona uma nova linha de produto ao formulário de venda.
+ */
+function adicionarLinhaProdutoVenda() {
+    const container = document.getElementById('produtos-venda-container');
+    if (!container) return;
+
+    const linhaDiv = document.createElement('div');
+    linhaDiv.className = 'produto-venda-linha';
+    linhaDiv.style.display = 'flex';
+    linhaDiv.style.gap = '10px';
+    linhaDiv.style.marginBottom = '10px';
+
+    linhaDiv.innerHTML = `
+        <select class="produto-select produto-item-input" style="flex: 3;" required>${selectProdutoVenda.innerHTML}</select>
+        <input type="number" class="quantidade-input produto-item-input" placeholder="Qtd" value="1" step="1" style="flex: 1;" required>
+        <input type="number" class="preco-input produto-item-input" placeholder="Preço Unit." step="0.01" style="flex: 1;" required>
+        <button type="button" onclick="this.parentElement.remove(); calcularTotalVenda();" class="delete-btn" style="padding: 5px 10px;">X</button>
+    `;
+    container.appendChild(linhaDiv);
+}
+
+/**
+ * Calcula e exibe o valor total da venda com base nos produtos inseridos.
+ */
+function calcularTotalVenda() {
+    const displayTotal = document.getElementById('valor-total-venda-display');
+    if (!displayTotal) return;
+
+    let total = 0;
+    const produtoRows = document.querySelectorAll('.produto-venda-linha');
+    produtoRows.forEach(row => {
+        const quantidade = parseFloat(row.querySelector('.quantidade-input').value) || 0;
+        const preco = parseFloat(row.querySelector('.preco-input').value) || 0;
+        total += quantidade * preco;
+    });
+
+    displayTotal.textContent = total.toFixed(2);
+}
+
 
 // =========================================================
 // 5. FUNÇÕES: FLUXO DE CAIXA (NOVO)
@@ -912,4 +990,157 @@ async function deletarInsumo(id) {
             alert("Erro ao excluir insumo. Verifique o console.");
         }
     }
+}   );
+    return;
+  }
+
+  listaCaixaBody.innerHTML = "";
+
+  if (itens.length === 0) {
+    listaCaixaBody.innerHTML = `<tr><td colspan="6">Nenhuma movimentação de caixa registrada.</td></tr>`;
+    return;
+  }
+
+  // ORDENA POR DATA DE FORMA DESCENDENTE (mais recente primeiro)
+  itens.sort((a, b) => {
+    const dataA = a.data
+      ? new Date(a.data)
+      : a.criadoEm
+      ? new Date(a.criadoEm.seconds * 1000)
+      : new Date(0);
+    const dataB = b.data
+      ? new Date(b.data)
+      : b.criadoEm
+      ? new Date(b.criadoEm.seconds * 1000)
+      : new Date(0);
+    return dataB - dataA;
+  });
+
+  itens.forEach((item) => {
+    const tipoClass = item.tipo === "Entrada" ? "entrada" : "saida"; // Use no CSS
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+            <td>${item.data || "N/A"}</td>
+            <td class="${tipoClass}">${item.tipo}</td>
+            <td>${item.origem || item.destino}</td>
+            <td>R$ ${item.valor ? item.valor.toFixed(2) : "0.00"}</td>
+            <td>${item.descricao || "N/A"}</td>
+            <td>
+                <button class="tabela-acao-btn delete-btn" onclick="deletarFluxoItem('${
+                  item.id
+                }')">Excluir</button>
+            </td>
+        `;
+    listaCaixaBody.appendChild(tr);
+  });
+}
+
+async function deletarFluxoItem(id) {
+  if (confirm("Tem certeza que deseja excluir esta movimentação?")) {
+    try {
+      await db.collection("fluxo").doc(id).delete();
+      alert("Item de fluxo excluído com sucesso!");
+    } catch (error) {
+      console.error("Erro ao excluir item de fluxo: ", error);
+      alert("Erro ao excluir. Verifique o console.");
+    }
+  }
+}
+
+// =========================================================
+// 6. FUNÇÕES: INSUMOS (NOVO)
+// =========================================================
+
+function renderizarInsumos(insumos) {
+  if (!listaInsumosBody) {
+    console.warn(
+      "Elemento 'lista-insumos-body' não encontrado. Inventário de Insumos não será exibido."
+    );
+    return;
+  }
+
+  listaInsumosBody.innerHTML = "";
+
+  if (insumos.length === 0) {
+    listaInsumosBody.innerHTML = `<tr><td colspan="5">Nenhum insumo cadastrado.</td></tr>`;
+    return;
+  }
+
+  insumos.forEach((insumo) => {
+    const insumoData = {
+      id: insumo.id,
+      nome: insumo.nome,
+      quantidade: insumo.quantidade || 0,
+      unidade: insumo.unidade || "",
+      custo: insumo.custo || 0,
+    };
+    const insumoString = JSON.stringify(insumoData).replace(/"/g, "&quot;");
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+            <td>${insumo.nome}</td>
+            <td>${insumo.quantidade} ${insumo.unidade || "Un"}</td>
+            <td>R$ ${insumo.custo ? insumo.custo.toFixed(2) : "0.00"}</td>
+            <td>${
+              insumo.criadoEm
+                ? new Date(insumo.criadoEm.seconds * 1000).toLocaleDateString()
+                : "N/A"
+            }</td>
+            <td>
+                <button class="tabela-acao-btn" onclick='abrirModalEdicaoInsumo(${insumoString})'>Editar</button>
+                <button class="tabela-acao-btn delete-btn" onclick="deletarInsumo('${
+                  insumo.id
+                }')">Excluir</button>
+            </td>
+        `;
+    listaInsumosBody.appendChild(tr);
+  });
+}
+
+function abrirModalEdicaoInsumo(insumoData) {
+  const modalTitulo = document.getElementById("modal-titulo");
+  modalTitulo.textContent = "Editar Insumo";
+  edicaoId.value = insumoData.id;
+  edicaoColecao.value = "insumos";
+
+  edicaoCampos.innerHTML = `
+        <div>
+            <label for="edicao-nome">Nome:</label>
+            <input type="text" id="edicao-nome" value="${
+              insumoData.nome
+            }" required>
+        </div>
+        <div>
+            <label for="edicao-quantidade">Quantidade:</label>
+            <input type="number" id="edicao-quantidade" step="0.01" value="${
+              insumoData.quantidade
+            }" required>
+        </div>
+        <div>
+            <label for="edicao-unidade">Unidade:</label>
+            <input type="text" id="edicao-unidade" value="${
+              insumoData.unidade || ""
+            }">
+        </div>
+        <div>
+            <label for="edicao-custo">Custo Total:</label>
+            <input type="number" id="edicao-custo" step="0.01" value="${
+              insumoData.custo
+            }" required>
+        </div>
+    `;
+
+  modalEdicao.style.display = "block";
+}
+
+async function deletarInsumo(id) {
+  if (confirm("Tem certeza que deseja excluir este insumo?")) {
+    try {
+      await db.collection("insumos").doc(id).delete();
+      alert("Insumo excluído com sucesso!");
+    } catch (error) {
+      console.error("Erro ao excluir insumo: ", error);
+      alert("Erro ao excluir insumo. Verifique o console.");
+    }
+  }
 }
